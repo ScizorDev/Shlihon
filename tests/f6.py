@@ -1,0 +1,45 @@
+from common import *
+from playwright.sync_api import sync_playwright
+import datetime
+log=[];errs=[]
+def ok(c,m):log.append(("PASS " if c else "FAIL ")+m)
+with sync_playwright() as p:
+    b=p.chromium.launch();ctx=b.new_context(viewport={'width':375,'height':667},locale='he-IL',timezone_id='Asia/Jerusalem')
+    W=lambda pg,t=400:pg.wait_for_timeout(t)
+    A,B=setup_pair(ctx,errs,W)
+    A.bring_to_front();A.click('[data-tab="jobs"]');W(A);A.click('#view [data-act="newjob"]');W(A)
+    A.fill("#w-from","הנגב 3, תל אביב");A.click("#wiz-next");W(A);A.fill("#w-to","ארלוזורוב 9, תל אביב");A.click("#wiz-next");W(A)
+    A.click("label.tile:nth-child(2)");W(A,700);A.click("#wiz-next");W(A)
+    A.click('label.tile:has(input[value="recur"])');W(A);ok(A.query_selector("#w-recTime") is not None,"recurring options shown")
+    A.click("#wiz-next");W(A);ok("יום" in A.inner_text("#wiz-err"),"day required")
+    now=A.evaluate("(()=>{const d=new Date(Date.now()+2*3600e3);return [d.getDay(),String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')]})()")
+    A.click(f'label.chip:has(#c-rd-{now[0]})');A.fill("#w-recTime",now[1]);W(A)
+    A.click("#wiz-next");W(A);A.fill("#w-price","45");A.click("#wiz-next");W(A);A.click("#wiz-next");W(A)
+    ok("כל" in A.inner_text(".card.preview"),"preview shows recurrence")
+    A.click("#wiz-next");W(A,1200)
+    ok(A.query_selector(".tplblock") is not None,"template listed")
+    n1=A.evaluate("myJobs().filter(j=>j.tmpl).length");ok(n1==1,f"instance generated within 24h ({n1})")
+    A.reload();W(A,1200);n2=A.evaluate("myJobs().filter(j=>j.tmpl).length");ok(n2==1,f"no duplicate after reload ({n2})")
+    w=A.evaluate("myJobs().find(j=>j.tmpl).when");ok(w and w.endswith(now[1]),"instance time = template time "+str(w))
+    # courier sees it, match, then set preferred courier
+    match(A,B,W)
+    A.bring_to_front();A.click('[data-tab="jobs"]');W(A)
+    tid=A.evaluate("templates()[0].id");cid=B.evaluate("S.me")
+    A.select_option(f'#pref-{tid}',cid);W(A,600);ok(A.evaluate("templates()[0].pref")==cid,"preferred courier saved")
+    A.click('[data-act="tpltoggle"]');W(A,500);ok(not A.evaluate("templates()[0].active"),"pause template");ok("מושהה" in A.inner_text(".tplblock"),"paused label")
+    A.click('[data-act="tpltoggle"]');W(A,500)
+    # simulate next generation tomorrow: add tomorrow day and force generator with fake clock via changing gen cutoff
+    A.evaluate("(()=>{const t=templates()[0];const d=new Date(Date.now()+20*3600e3);const tm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');tplUpdate(t.id,{recur:{days:[d.getDay()],time:tm}})})()");W(A,600)
+    A.evaluate("genRecurring()");W(A,900)
+    jobs=A.evaluate("myJobs().filter(j=>j.tmpl&&j.status!=='closed').map(j=>j.id)");ok(len(jobs)>=2,"second instance generated "+str(len(jobs)))
+    newj=[j for j in jobs if A.evaluate(f"!myMatches().some(m=>m.job.id==='{j}')")][0]
+    ok(A.evaluate(f"sSw(S.me,'{newj}')['{cid}']")==1,"sender pre-approved preferred courier")
+    B.bring_to_front();W(B,700);B.click('[data-tab="deck"]');W(B,500);B.click("#btn-yes");W(B,900)
+    ok(B.query_selector(".match-box") is not None,"instant match with preferred courier")
+    A.bring_to_front();W(A,600);ok(A.query_selector(".match-box") is not None,"sender also sees instant match")
+    if A.query_selector('[data-act="closepop"]'):A.click('[data-act="closepop"]');W(A)
+    A.click('[data-tab="jobs"]');W(A);A.click('[data-act="tpldel"]');A.click('[data-act="tpldel"]');W(A,600);ok(A.query_selector(".tplblock") is None,"template deleted")
+    A.click("#langBtn");W(A);A.click('[data-l="en"]');W(A);A.click('#view [data-act="newjob"]');W(A);A.fill("#w-from","x st");A.click("#wiz-next");W(A);A.fill("#w-to","y st");A.click("#wiz-next");W(A);A.click("label.tile:nth-child(2)");W(A,700);A.click("#wiz-next");W(A)
+    ok("Recurring delivery" in A.inner_text("#view"),"translated")
+    print("\n".join(log));print("FAILS",sum(l.startswith("FAIL") for l in log),"ERR",errs)
+    b.close()

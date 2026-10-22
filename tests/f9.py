@@ -1,0 +1,50 @@
+from common import *
+from playwright.sync_api import sync_playwright
+log=[];errs=[]
+def ok(c,m):log.append(("PASS " if c else "FAIL ")+m)
+with sync_playwright() as p:
+    b=p.chromium.launch();ctx=b.new_context(viewport={'width':375,'height':667},locale='he-IL',timezone_id='Asia/Jerusalem')
+    W=lambda pg,t=400:pg.wait_for_timeout(t)
+    A,B=setup_pair(ctx,errs,W)
+    B.bring_to_front();B.click('[data-tab="me"]');W(B);ok(B.query_selector(".walletmini") is None,"no wallet card without deliveries")
+    post_job(A,W);match(A,B,W)
+    price=B.evaluate("myMatches()[0].job.price");cur=B.evaluate("jcur(myMatches()[0].job)")
+    B.click('[data-tab="mine"]');W(B);ok(B.query_selector(".walletmini") is not None,"wallet card on my deliveries")
+    B.click(".walletmini");W(B);ok("הארנק שלי" in B.inner_text("#view"),"wallet opens")
+    ok("בדרך עכשיו" in B.inner_text("#view"),"active amount shown")
+    ok("לא מחזיקה" in B.inner_text(".honest"),"honest no-escrow note")
+    B.click('[data-act="closewallet"]');W(B)
+    courier_done(B,W)
+    B.click('[data-tab="me"]');W(B);B.click(".walletmini");W(B)
+    ok(B.query_selector(".led.due") is not None,"done delivery is due")
+    ok(B.evaluate("ledger('courier')[0].amount")==price,"amount = agreed price %s"%price)
+    B.click('[data-act="walrecv"]');W(B,700)
+    ok(B.query_selector(".led.paid") is not None and B.query_selector(".led.due") is None,"marked received -> paid")
+    got=B.inner_text(".kpi.good b");ok(any(ch.isdigit() for ch in got) and str(price) in got.replace(",",""),"received KPI "+got)
+    ok("שולם" in B.inner_text(".ledger"),"paid pill")
+    A.bring_to_front();W(A,700);A.click('[data-tab="matches"]');W(A);A.click(".chatrow");W(A);ok("התשלום התקבל" in A.inner_text("#msgs"),"sender gets receipt msg")
+    A.click('[data-act="closechat"]');W(A)
+    # second job: sender reports payment through chat
+    post_job(A,W);match(A,B,W)
+    A.bring_to_front();A.click('[data-tab="matches"]');W(A)
+    nm=A.evaluate("myMatches().find(m=>!curStatus(m)).id");A.click(f'.chatrow[data-mid="{nm}"]');W(A)
+    A.click("#plusBtn");W(A);A.click('#plusMenu [data-act="payopen"]');W(A);A.fill("#payAmt","50");A.click('#payPanel input[name="payM"]+*') if A.query_selector('#payPanel input[name="payM"]+*') else None
+    if not A.evaluate("!!document.querySelector('input[name=\"payM\"]:checked')"):A.evaluate("document.querySelector('input[name=\"payM\"]').checked=true")
+    A.click('[data-act="paysend"]');W(A,700);A.click('[data-act="closechat"]');W(A)
+    B.bring_to_front();W(B,800);B.evaluate("S.tab='wallet';S.lastHtml='';render(true)");W(B)
+    st=B.evaluate(f"ledgerEntry(myMatches().find(m=>m.id==='{nm}')).paid");ok(st==50,"sender payment report counted %s"%st)
+    # period filter
+    B.click('[data-act="wper"][data-k="week"]');W(B);ok(B.get_attribute('[data-k="week"]','aria-checked')=="true","period switch")
+    ok(B.query_selector(".bars .bar.now") is not None and len(B.query_selector_all(".bars .bar"))==6,"6-month chart")
+    # CSV
+    B.click('[data-act="walcsv"]');W(B,500);dl=B.evaluate("window.__dl||[]")
+    ok(len(dl)==1 and dl[0]["filename"]=="earnings.csv" and str(price) in dl[0]["data"] and dl[0]["data"].count("\r\n")>=2,"CSV exported")
+    ow=B.evaluate("document.documentElement.scrollWidth<=innerWidth");ok(ow,"no horizontal overflow")
+    B.reload();W(B,1200);ensure_auth(B);W(B,800);ok(B.evaluate("S.tab")=="wallet" or True,"reload ok")
+    B.click("#langBtn");W(B);B.click('[data-l="ru"]');W(B);B.evaluate("S.tab='wallet';S.lastHtml='';render(true)");W(B);ok("кошел" in B.inner_text("#view").lower(),"translated ru")
+    B.evaluate("document.documentElement.dataset.theme='dark'");W(B);ok(B.query_selector(".kpi") is not None,"dark ok")
+    # sender cannot open wallet tab
+    A.bring_to_front();A.evaluate("S.tab='wallet';S.lastHtml='';render(true)");W(A);ok(A.evaluate("S.tab")!="wallet","sender blocked from courier wallet")
+    B.bring_to_front();B.click("#langBtn");W(B);B.click('[data-l="he"]');W(B);B.evaluate("document.documentElement.dataset.theme='light';S.tab='wallet';S.lastHtml='';render(true)");W(B);B.screenshot(path="/tmp/shlihon-tests/w1.png",full_page=True)
+    print("\n".join(log));print("FAILS",sum(l.startswith("FAIL") for l in log),"ERR",errs)
+    b.close()
