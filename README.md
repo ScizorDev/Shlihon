@@ -7,6 +7,10 @@ A courier ↔ sender matching app: couriers swipe on deliveries, senders pick co
 - **Languages:** עברית · English · Русский · العربية (RTL + LTR), light/dark.
 - **Features:** swipe matching, chat (location, photos, voice, payments), live delivery status, ratings, proof of delivery, delivery codes, smart routes, recurring deliveries, ETA, courier ID verification, courier wallet, business dashboard, worldwide countries, login/registration, built-in test mode.
 
+## Test interface
+- **Claude page** (real shared database): open the published page → test bar → "שליח בדיקה" / "שולח בדיקה", or add `#testcourier` / `#testsender` to the link in two tabs.
+- **Locally**, same two linked test screens: `python3 tests/serve.py` → http://localhost:8000
+
 ## Run the tests
 ```bash
 pip install playwright pillow && playwright install chromium

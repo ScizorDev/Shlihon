@@ -8,6 +8,21 @@ The whole app is ONE file: `index.html` (HTML + CSS + JS, no build step, no fram
 It is published as a Claude artifact: https://claude.ai/artifact/6P8Yo9ojXeTRnP5kTCRZgt
 History of everything the owner asked for and what was built: `docs/HISTORY.md`.
 
+## Source of truth & release workflow (owner's requirement)
+
+The repository is the single source of truth. The Claude page is only a published copy of `index.html`.
+After every change, in this order:
+1. Edit `index.html` (and tests/docs) in the repo; run the relevant tests, then `tests/regress.sh`.
+2. Commit and push.
+3. Republish **this same file** to the existing page so the owner's test interface stays at the same link:
+   Artifact tool → publish `file_path=<repo>/index.html`, `url=https://claude.ai/artifact/6P8Yo9ojXeTRnP5kTCRZgt`
+   (omit `capabilities` to keep them; pass the full JSON below only if db rules change). Read the artifact first
+   if this session hasn't published it yet. Never publish without `url` (that creates a duplicate page).
+4. If a change was made directly in the Claude page instead, copy it back into the repo before anything else.
+
+Local test interface (same two linked test screens, no Claude needed):
+`python3 tests/serve.py` → http://localhost:8000 (courier + sender side by side; `app.html#testcourier`, `app.html#testsender`).
+
 ## Hard rules (from the owner — keep them in every change)
 
 1. **Keep the test interface forever.** The owner (artifact owner only) has two connected test UIs:
